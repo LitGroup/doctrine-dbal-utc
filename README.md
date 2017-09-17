@@ -8,7 +8,7 @@
 ## Installation
 
 ```bash
-composer require litgroup/doctrine-dbal-utc:^1.0
+composer require litgroup/doctrine-dbal-utc:^0.1.0
 ```
 
 [license]: https://raw.githubusercontent.com/LitGroup/doctrine-dbal-utc.php/master/LICENSE
