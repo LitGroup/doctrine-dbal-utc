@@ -25,10 +25,12 @@ declare(strict_types=1);
 
 namespace Test\LitGroup\Doctrine\DBAL\UTC;
 
-use DateTimeImmutable;
 use DateTime;
+use DateTimeInterface;
+use DateTimeImmutable;
 use DateTimeZone;
 use Doctrine\DBAL\DBALException;
+use Doctrine\DBAL\Types\ConversionException;
 use Doctrine\DBAL\Types\DateTimeImmutableType;
 use Doctrine\DBAL\Types\Type;
 use LitGroup\Doctrine\DBAL\UTC\DateTimeUtcImmutableType;
@@ -74,7 +76,7 @@ class DateTimeUtcImmutableTypeTest extends TestCase
         $this->assertSame(DateTimeUtcImmutableType::TYPE_NAME, $this->type->getName());
     }
 
-    function getConversionToDatabaseValueExamples(): array
+    function getPhpValueToDatabaseValueExamples(): array
     {
         return [
             [
@@ -93,9 +95,10 @@ class DateTimeUtcImmutableTypeTest extends TestCase
     }
 
     /**
-     * @dataProvider getConversionToDatabaseValueExamples
+     * @dataProvider getPhpValueToDatabaseValueExamples
+     * @throws ConversionException
      */
-    function testConversionToDatabaseValue(?DateTimeImmutable $dateTime, ?string $str): void
+    function testConvertToDatabaseValue(?DateTimeImmutable $dateTime, ?string $str): void
     {
         $this->assertSame(
             $str,
@@ -103,21 +106,36 @@ class DateTimeUtcImmutableTypeTest extends TestCase
         );
     }
 
-    function testNullConversionToPHPValue(): void
+    /**
+     * @throws ConversionException
+     */
+    function testConvertToDatabaseValue_DateTime(): void
+    {
+        $this->expectException(ConversionException::class);
+        $this->type->convertToDatabaseValue(new DateTime(), $this->createPlatform());
+    }
+
+    /**
+     * @throws ConversionException
+     */
+    function testConvertToDatabaseValue_NotTimeType(): void
+    {
+        $this->expectException(ConversionException::class);
+        $this->type->convertToDatabaseValue(new \stdClass(), $this->createPlatform());
+    }
+
+    /**
+     * @throws ConversionException
+     */
+    function testConvertToPhpValue_Null(): void
     {
         $this->assertNull($this->type->convertToPHPValue(null, $this->createPlatform()));
     }
 
-    function testDateTimeConversionToPHPValue(): void
-    {
-        $input = new DateTimeImmutable();
-
-        $converted = $this->type->convertToPHPValue($input, $this->createPlatform());
-        $this->assertEquals($input, $converted);
-        $this->assertEquals('UTC', $converted->getTimezone()->getName());
-    }
-
-    function testConversionToPHPValue(): void
+    /**
+     * @throws ConversionException
+     */
+    function testConvertToPHPValue_DateTimeString(): void
     {
         /** @var DateTimeImmutable $value */
         $value = $this->type->convertToPHPValue('2017-09-17 20:30:45', $this->createPlatform());
@@ -130,19 +148,56 @@ class DateTimeUtcImmutableTypeTest extends TestCase
         $this->assertEquals('UTC', $value->getTimezone()->getName());
     }
 
-    function getInvalidDatabaseValueExamples(): array
+    function getDateTimeInterfaceToPhpValueExamples(): array
     {
         return [
-            [''],
-            ['invalid datetime'],
+            [
+                DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', '2017-12-06 10:20:30', new DateTimeZone('UTC')),
+                DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', '2017-12-06 10:20:30', new DateTimeZone('UTC')),
+            ],
+            [
+                DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', '2017-12-06 10:20:30', new DateTimeZone('Europe/Moscow')),
+                DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', '2017-12-06 10:20:30', new DateTimeZone('UTC')),
+            ],
+            [
+                DateTime::createFromFormat('!Y-m-d H:i:s', '2017-12-06 10:20:30', new DateTimeZone('UTC')),
+                DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', '2017-12-06 10:20:30', new DateTimeZone('UTC')),
+            ],
+            [
+                DateTime::createFromFormat('!Y-m-d H:i:s', '2017-12-06 10:20:30', new DateTimeZone('Europe/Moscow')),
+                DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', '2017-12-06 10:20:30', new DateTimeZone('UTC')),
+            ],
         ];
     }
 
     /**
-     * @dataProvider getInvalidDatabaseValueExamples
+     * @dataProvider getDateTimeInterfaceToPhpValueExamples
+     * @throws ConversionException
      */
-    function testInvalidConversionToPHPValue(string $value): void
+    function testConvertToPhpValue_DateTimeInterface(DateTimeInterface $input, DateTimeImmutable $expected): void
     {
+        $phpValue = $this->type->convertToPHPValue($input, $this->createPlatform());
+
+        $this->assertInstanceOf(DateTimeImmutable::class, $phpValue);
+        $this->assertEquals('UTC', $phpValue->getTimezone()->getName());
+        $this->assertEquals($expected, $phpValue);
+    }
+
+    function getInvalidDatabaseValueFormatExamples(): array
+    {
+        return [
+            [''],
+            ['invalid string'],
+        ];
+    }
+
+    /**
+     * @dataProvider getInvalidDatabaseValueFormatExamples
+     * @throws ConversionException
+     */
+    function testConvertToPhp_InvalidFormat(string $value): void
+    {
+        $this->expectException(ConversionException::class);
         $this->assertNull($this->type->convertToPHPValue($value, $this->createPlatform()));
     }
 
