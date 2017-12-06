@@ -27,7 +27,9 @@ namespace LitGroup\Doctrine\DBAL\UTC;
 
 use DateTimeZone;
 use DateTimeImmutable;
+use DateTimeInterface;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
+use Doctrine\DBAL\Types\ConversionException;
 use Doctrine\DBAL\Types\DateTimeImmutableType;
 
 class DateTimeUtcImmutableType extends DateTimeImmutableType
@@ -39,30 +41,57 @@ class DateTimeUtcImmutableType extends DateTimeImmutableType
         return self::TYPE_NAME;
     }
 
+    /**
+     * @param $value
+     * @param AbstractPlatform $platform
+     * @return mixed|string
+     * @throws ConversionException
+     */
     public function convertToDatabaseValue($value, AbstractPlatform $platform)
     {
         if ($value === null) {
             return $value;
         }
 
-        return parent::convertToDatabaseValue($value->setTimeZone($this->getUtcTimezone()), $platform);
+        if ($value instanceof \DateTimeImmutable) {
+            return $value
+                ->setTimeZone($this->getUtcTimezone())
+                ->format($platform->getDateTimeFormatString());
+        }
+
+        throw ConversionException::conversionFailedInvalidType(
+            $value,
+            $this->getName(),
+            ['null', \DateTimeImmutable::class]
+        );
     }
 
+    /**
+     * @param $value
+     * @param AbstractPlatform $platform
+     * @return bool|\DateTime|DateTimeImmutable|false|mixed
+     * @throws ConversionException
+     */
     public function convertToPHPValue($value, AbstractPlatform $platform)
     {
         if ($value === null) {
             return $value;
         }
 
-        if ($value instanceof DateTimeImmutable) {
-            return $value->setTimezone($this->getUtcTimezone());
+        if ($value instanceof DateTimeInterface) {
+            return DateTimeImmutable::createFromFormat(
+                $platform->getDateTimeFormatString(),
+                $value->format($platform->getDateTimeFormatString()),
+                $this->getUtcTimezone()
+            );
         }
 
-        $dateTime =  DateTimeImmutable::createFromFormat(
+        $dateTime = DateTimeImmutable::createFromFormat(
             $platform->getDateTimeFormatString(), $value, $this->getUtcTimezone());
 
         if ($dateTime === false) {
-            return null;
+            throw ConversionException::conversionFailedFormat(
+                (string) $value, $this->getName(), $platform->getDateTimeFormatString());
         }
 
         return $dateTime;
